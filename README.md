@@ -39,11 +39,17 @@ This dump already contains the indexes, the `orderlog` table with its `orderstat
 
 > If `webstore` already exists from an earlier load, skip the `CREATE DATABASE` line. The dump drops and recreates every table, so re-running it resets the data.
 
-**1.2 Install the stored procedures** (`place_order`, `cancel_order`):
+**1.2 Fix the character encoding, install the procedures and create the views:**
 
 ```sh
+mariadb -u root -p webstore -e "source sql/fix_encoding.sql"
 mariadb -u root -p webstore -e "source sql/04_transactions.sql"
+mariadb -u root -p webstore -e "source sql/06_views.sql"
 ```
+
+- `fix_encoding.sql` repairs Finnish characters that were corrupted in the dump (`Ty├Âkalut` → `Työkalut`, 48 rows in categories and suppliers). It only touches broken rows, so running it twice is harmless.
+- `04_transactions.sql` creates the `place_order` and `cancel_order` procedures.
+- `06_views.sql` creates the `v_product_catalog`, `v_order_summary`, `v_product_sales` and `v_monthly_sales` views. The API won't start without them: it checks at startup that every table and view it maps exists.
 
 **1.3 Create the application user.** The API never connects as `root`. Open [sql/app_user.sql](sql/app_user.sql), replace `change_me` with a password of your own, then run:
 
@@ -109,11 +115,14 @@ Available endpoints so far:
 
 | Method | Path | Description |
 |---|---|---|
-| GET | `/api/products` | Search products. Query parameters: `q` (name prefix), `categoryId`, `minPrice`, `maxPrice`, `sort` (`id`, `name`, `price`), `dir` (`asc`, `desc`), `page` (from 0), `size` (1–100, default 20) |
+| GET | `/api/products` | Search products. Query parameters: `q` (name prefix), `categoryId`, `minPrice`, `maxPrice`, `inStock` (`true` = only in stock), `sort` (`id`, `name`, `price`), `dir` (`asc`, `desc`), `page` (from 0), `size` (1–100, default 20) |
 | GET | `/api/products/{id}` | One product with category and supplier name |
+| GET | `/api/customers/{id}/orders` | A customer's order history, newest first, with item counts and totals. Query parameters: `status` (`NEW`, `SHIPPED`, `CANCELLED`), `page`, `size` |
 | GET | `/api/orders/{id}` | Order with customer, shipping address, order lines and total |
 | POST | `/api/orders` | Place an order (runs the `place_order` transaction) |
 | POST | `/api/orders/{id}/cancel` | Cancel a `NEW` order and return its items to stock |
+| GET | `/api/reports/top-products` | Best-selling products. Query parameters: `by` (`units` or `revenue`), `limit` (1–100, default 10). Takes a few seconds: it aggregates all 1.1 million order lines |
+| GET | `/api/reports/monthly-sales` | Orders, customers, units, revenue and average order value per month. Query parameters: `from`, `to` (`YYYY-MM`) |
 
 Errors are returned as JSON ([RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) problem details), for example:
 
@@ -131,22 +140,33 @@ mariadb -u root -p --force -t webstore -e "source sql/04_transactions_test.sql"
 
 The test leaves one cancelled order behind; stock quantities end up unchanged.
 
-In VS Code: **Terminal → Run Task… → DB: run transaction tests (04)**. The VS Code tasks connect as your OS user without a password, which works with Homebrew MariaDB on macOS; on other setups use the command above.
+[sql/06_views_test.sql](sql/06_views_test.sql) runs example queries against each view (catalog by category, a customer's order history, best sellers, sales per category and per month) and shows the query plan for `v_order_summary`. It only reads data:
+
+```sh
+mariadb -u root -p -t webstore -e "source sql/06_views_test.sql"
+```
+
+In VS Code: **Terminal → Run Task… → DB: run transaction tests (04)** / **DB: run view tests (06)**. The VS Code tasks connect as your OS user without a password, which works with Homebrew MariaDB on macOS; on other setups use the command above.
 
 ## Project structure
 
 ```
 ├── project_database_utf8.sql        Full database dump (schema + data)
 ├── sql/
+│   ├── fix_encoding.sql             Repairs corrupted Finnish characters in the dump
 │   ├── 04_transactions.sql          place_order / cancel_order procedures
 │   ├── 04_transactions_test.sql     Tests for the procedures
+│   ├── 06_views.sql                 Views for the catalog, order summaries and sales reports
+│   ├── 06_views_test.sql            Example queries against the views
 │   └── app_user.sql                 Least-privilege database user for the API
 ├── src/main/java/com/webstore/api/
 │   ├── customer/                    Customer, CustomerAddress entities
 │   ├── supplier/                    Supplier, SupplierAddress entities
-│   ├── product/                     Product, ProductCategory entities; product endpoints
-│   ├── order/                       Order, OrderItem, OrderLog entities; order endpoints,
-│   │                                stored procedure calls (OrderProcedures)
+│   ├── product/                     Product, ProductCategory entities, CatalogProduct (view);
+│   │                                product endpoints
+│   ├── order/                       Order, OrderItem, OrderLog entities, OrderSummary (view);
+│   │                                order endpoints, stored procedure calls (OrderProcedures)
+│   ├── report/                      ProductSales, MonthlySales (views); report endpoints
 │   └── common/                      Error handling, paging
 ├── src/main/resources/
 │   └── application.properties       DB connection, connection pool and JPA settings
@@ -159,7 +179,9 @@ In VS Code: **Terminal → Run Task… → DB: run transaction tests (04)**. The
 | Problem | Fix |
 |---|---|
 | `Access denied for user 'webstore_app'` | The password in `.env` doesn't match the database user's password. Note that `app_user.sql` uses `CREATE USER IF NOT EXISTS`, so re-running it does **not** change the password of an existing user. Set it directly: `ALTER USER 'webstore_app'@'localhost' IDENTIFIED BY '<password from .env>';` |
-| `Schema-validation: missing table` / `missing column` at startup | Hibernate checks at startup that the entities match the database (`ddl-auto=validate`). The database was probably loaded from the original course dump instead of `project_database_utf8.sql`; redo step 1.1. |
+| `Schema-validation: missing table [v_...]` at startup | The views haven't been created. Run `sql/06_views.sql` (step 1.2). |
+| `Schema-validation: missing table` / `missing column` at startup (other tables) | Hibernate checks at startup that the entities match the database (`ddl-auto=validate`). The database was probably loaded from the original course dump instead of `project_database_utf8.sql`; redo step 1.1. |
+| Names show up as `Ty├Âkalut`, `M├ñkel├ñ` | Run `sql/fix_encoding.sql` (step 1.2). |
 | `PROCEDURE webstore.place_order does not exist` | Step 1.2 wasn't run, or was run against a different database. Reloading the dump (1.1) doesn't remove procedures, but creating a new database does. |
 | `Unknown database 'webstore'` | Step 1.1 wasn't run, or the database has a different name. Fix `DB_URL` in `.env`. |
 | `Port 8080 was already in use` | Another copy of the API is still running. Stop it, or start on another port with `./mvnw spring-boot:run -Dspring-boot.run.arguments=--server.port=8081`. |

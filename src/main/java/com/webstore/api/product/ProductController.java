@@ -29,11 +29,12 @@ public class ProductController {
             @RequestParam(required = false) Integer categoryId,
             @RequestParam(required = false) BigDecimal minPrice,
             @RequestParam(required = false) BigDecimal maxPrice,
+            @RequestParam(defaultValue = "false") boolean inStock,
             @RequestParam(defaultValue = "id") String sort,
             @RequestParam(defaultValue = "asc") String dir,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
-        return products.search(q, categoryId, minPrice, maxPrice, sort,
+        return products.search(q, categoryId, minPrice, maxPrice, inStock, sort,
                 "desc".equalsIgnoreCase(dir), page, size);
     }
 

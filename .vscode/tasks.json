@@ -23,6 +23,12 @@
         "isDefault": true
       },
       "problemMatcher": []
+    },
+    {
+      "label": "DB: run view tests (06)",
+      "type": "shell",
+      "command": "mariadb --default-character-set=utf8mb4 -t ${input:database} < sql/06_views_test.sql",
+      "problemMatcher": []
     }
   ],
   "inputs": [
