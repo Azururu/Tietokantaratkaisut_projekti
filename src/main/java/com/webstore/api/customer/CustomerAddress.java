@@ -37,8 +37,8 @@ public class CustomerAddress {
     protected CustomerAddress() {
     }
 
-    public CustomerAddress(Customer customer, String streetAddress, String postalCode, String city, String country) {
-        this.customer = customer;
+    /** The customer is set by {@link Customer#addAddress}. */
+    public CustomerAddress(String streetAddress, String postalCode, String city, String country) {
         this.streetAddress = streetAddress;
         this.postalCode = postalCode;
         this.city = city;
@@ -51,6 +51,10 @@ public class CustomerAddress {
 
     public Customer getCustomer() {
         return customer;
+    }
+
+    void setCustomer(Customer customer) {
+        this.customer = customer;
     }
 
     public String getStreetAddress() {

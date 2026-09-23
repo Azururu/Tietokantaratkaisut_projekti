@@ -1,6 +1,7 @@
 package com.webstore.api.order;
 
 import java.net.URI;
+import java.util.List;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -36,5 +37,15 @@ public class OrderController {
     @PostMapping("/{id}/cancel")
     public OrderResponse cancel(@PathVariable int id) {
         return orders.cancel(id);
+    }
+
+    @PostMapping("/{id}/ship")
+    public OrderResponse ship(@PathVariable int id) {
+        return orders.ship(id);
+    }
+
+    @GetMapping("/{id}/status-history")
+    public List<OrderLog> statusHistory(@PathVariable int id) {
+        return orders.statusHistory(id);
     }
 }

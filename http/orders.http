@@ -1,0 +1,52 @@
+### Order requests for the VS Code "REST Client" extension (humao.rest-client):
+### click "Send Request" above each request, top to bottom.
+
+@base = http://localhost:8080/api
+
+### Place an order (place_order procedure: one transaction)
+# @name order
+POST {{base}}/orders
+Content-Type: application/json
+
+{
+  "customerId": 24,
+  "shippingAddressId": 24,
+  "items": [
+    { "productId": 456, "quantity": 2 },
+    { "productId": 63, "quantity": 1 }
+  ]
+}
+
+### Read it
+GET {{base}}/orders/{{order.response.body.$.id}}
+
+### Ship it (row lock + trigger logs NEW -> SHIPPED)
+POST {{base}}/orders/{{order.response.body.$.id}}/ship
+
+### Shipping again fails: 409
+POST {{base}}/orders/{{order.response.body.$.id}}/ship
+
+### Status history written by the trigger
+GET {{base}}/orders/{{order.response.body.$.id}}/status-history
+
+### Place another order and cancel it (cancel_order procedure returns the stock)
+# @name second
+POST {{base}}/orders
+Content-Type: application/json
+
+{ "customerId": 24, "items": [ { "productId": 3, "quantity": 1 } ] }
+
+###
+POST {{base}}/orders/{{second.response.body.$.id}}/cancel
+
+###
+GET {{base}}/orders/{{second.response.body.$.id}}/status-history
+
+### Out of stock: the whole order is rolled back, 409
+POST {{base}}/orders
+Content-Type: application/json
+
+{ "customerId": 24, "items": [ { "productId": 3, "quantity": 1 }, { "productId": 1, "quantity": 1 } ] }
+
+### The customer's order history (v_order_summary view)
+GET {{base}}/customers/24/orders

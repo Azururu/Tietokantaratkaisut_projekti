@@ -1,0 +1,66 @@
+### Category and product requests for the VS Code "REST Client" extension (humao.rest-client):
+### click "Send Request" above each request. Run them top to bottom: later requests
+### use the ids created by earlier ones.
+
+@base = http://localhost:8080/api
+
+### All categories
+GET {{base}}/categories
+
+### Create a category (ProductCategory entity, repository save())
+# @name category
+POST {{base}}/categories
+Content-Type: application/json
+
+{ "name": "Lemmikit", "description": "Lemmikkieläinten tarvikkeet" }
+
+### Read it back
+GET {{base}}/categories/{{category.response.body.$.id}}
+
+### Update it
+PUT {{base}}/categories/{{category.response.body.$.id}}
+Content-Type: application/json
+
+{ "name": "Lemmikit", "description": "Ruoat ja tarvikkeet lemmikeille" }
+
+### Create a product in the new category
+# @name product
+POST {{base}}/products
+Content-Type: application/json
+
+{
+  "name": "Kissan raapimapuu",
+  "description": "Korkea raapimapuu",
+  "price": 49.90,
+  "stockQuantity": 12,
+  "categoryId": {{category.response.body.$.id}},
+  "supplierId": 59
+}
+
+### Update the product
+PUT {{base}}/products/{{product.response.body.$.id}}
+Content-Type: application/json
+
+{
+  "name": "Kissan raapimapuu XL",
+  "description": "Korkea raapimapuu",
+  "price": 59.90,
+  "stockQuantity": 10,
+  "categoryId": {{category.response.body.$.id}},
+  "supplierId": 59
+}
+
+### Search: products in stock in the new category
+GET {{base}}/products?categoryId={{category.response.body.$.id}}&inStock=true
+
+### Deleting the category fails while it has products: 409
+DELETE {{base}}/categories/{{category.response.body.$.id}}
+
+### Delete the product, then the category
+DELETE {{base}}/products/{{product.response.body.$.id}}
+
+###
+DELETE {{base}}/categories/{{category.response.body.$.id}}
+
+### A product that is on orders can't be deleted: 409
+DELETE {{base}}/products/2

@@ -5,6 +5,8 @@ import java.time.LocalDateTime;
 
 import org.hibernate.annotations.Immutable;
 
+import com.fasterxml.jackson.annotation.JsonPropertyOrder;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
@@ -17,6 +19,7 @@ import jakarta.persistence.Table;
 @Entity
 @Immutable
 @Table(name = "v_order_summary")
+@JsonPropertyOrder({ "orderId", "customerId", "customerName", "orderDate", "deliveryDate", "status", "itemCount", "totalQuantity", "totalAmount" })
 public class OrderSummary {
 
     @Id

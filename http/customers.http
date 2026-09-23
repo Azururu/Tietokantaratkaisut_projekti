@@ -1,0 +1,56 @@
+### Customer requests for the VS Code "REST Client" extension (humao.rest-client):
+### click "Send Request" above each request. Run them top to bottom: later requests
+### use the id of the customer created by the first one.
+
+@base = http://localhost:8080/api
+
+### Create a customer with two addresses: one save() stores all three rows (cascade)
+# @name create
+POST {{base}}/customers
+Content-Type: application/json
+
+{
+  "firstName": "Maija",
+  "lastName": "Meikäläinen",
+  "email": "maija@example.fi",
+  "phone": "040-1111111",
+  "addresses": [
+    { "streetAddress": "Mannerheimintie 1", "postalCode": "00100", "city": "Helsinki", "country": "Suomi" },
+    { "streetAddress": "Hämeenkatu 5", "postalCode": "33100", "city": "Tampere", "country": "Suomi" }
+  ]
+}
+
+### Get the customer with addresses
+GET {{base}}/customers/{{create.response.body.$.id}}
+
+### Update: creates a new version in the system-versioned table
+PUT {{base}}/customers/{{create.response.body.$.id}}
+Content-Type: application/json
+
+{
+  "firstName": "Maija",
+  "lastName": "Meikäläinen",
+  "email": "maija@example.fi",
+  "phone": "050-2222222"
+}
+
+### Add an address (saved through the cascade)
+POST {{base}}/customers/{{create.response.body.$.id}}/addresses
+Content-Type: application/json
+
+{ "streetAddress": "Aleksanterinkatu 3", "postalCode": "90100", "city": "Oulu", "country": "Suomi" }
+
+### Remove the second address (deleted by orphanRemoval)
+DELETE {{base}}/customers/{{create.response.body.$.id}}/addresses/{{create.response.body.$.addresses[1].id}}
+
+### History: one version per change
+GET {{base}}/customers/{{create.response.body.$.id}}/history
+
+### Delete the customer: its addresses are deleted too (cascade)
+DELETE {{base}}/customers/{{create.response.body.$.id}}
+
+### The history remains after deletion
+GET {{base}}/customers/{{create.response.body.$.id}}/history
+
+### A customer with orders can't be deleted: 409
+DELETE {{base}}/customers/24
