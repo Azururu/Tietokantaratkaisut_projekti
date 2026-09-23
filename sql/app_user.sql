@@ -10,7 +10,7 @@
 -- Tietokannan nimi: vaihda webstore tarvittaessa (esim. webstore_scratch).
 -- =====================================================================
 
-CREATE USER IF NOT EXISTS 'webstore_app'@'localhost' IDENTIFIED BY 'change_me';
+CREATE USER IF NOT EXISTS 'webstore_app'@'localhost' IDENTIFIED BY 'Kesko123';
 
 GRANT SELECT, INSERT, UPDATE, DELETE, EXECUTE
    ON webstore.* TO 'webstore_app'@'localhost';

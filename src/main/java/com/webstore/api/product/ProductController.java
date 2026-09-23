@@ -8,7 +8,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.webstore.api.common.NotFoundException;
 import com.webstore.api.common.PageResponse;
 
 import jakarta.validation.constraints.Max;
@@ -18,14 +17,14 @@ import jakarta.validation.constraints.Min;
 @RequestMapping("/api/products")
 public class ProductController {
 
-    private final ProductRepository products;
+    private final ProductService products;
 
-    public ProductController(ProductRepository products) {
+    public ProductController(ProductService products) {
         this.products = products;
     }
 
     @GetMapping
-    public PageResponse<Product> list(
+    public PageResponse<ProductResponse> list(
             @RequestParam(required = false) String q,
             @RequestParam(required = false) Integer categoryId,
             @RequestParam(required = false) BigDecimal minPrice,
@@ -39,8 +38,7 @@ public class ProductController {
     }
 
     @GetMapping("/{id}")
-    public Product get(@PathVariable int id) {
-        return products.findById(id)
-                .orElseThrow(() -> new NotFoundException("Product " + id + " not found"));
+    public ProductResponse get(@PathVariable int id) {
+        return products.get(id);
     }
 }

@@ -10,35 +10,31 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.webstore.api.common.NotFoundException;
-
 import jakarta.validation.Valid;
 
 @RestController
 @RequestMapping("/api/orders")
 public class OrderController {
 
-    private final OrderRepository orders;
+    private final OrderService orders;
 
-    public OrderController(OrderRepository orders) {
+    public OrderController(OrderService orders) {
         this.orders = orders;
     }
 
     @GetMapping("/{id}")
-    public OrderDetails get(@PathVariable int id) {
-        return orders.findById(id)
-                .orElseThrow(() -> new NotFoundException("Order " + id + " not found"));
+    public OrderResponse get(@PathVariable int id) {
+        return orders.get(id);
     }
 
     @PostMapping
-    public ResponseEntity<OrderDetails> create(@Valid @RequestBody CreateOrderRequest request) {
-        int id = orders.placeOrder(request);
-        return ResponseEntity.created(URI.create("/api/orders/" + id)).body(get(id));
+    public ResponseEntity<OrderResponse> create(@Valid @RequestBody CreateOrderRequest request) {
+        OrderResponse order = orders.place(request);
+        return ResponseEntity.created(URI.create("/api/orders/" + order.id())).body(order);
     }
 
     @PostMapping("/{id}/cancel")
-    public OrderDetails cancel(@PathVariable int id) {
-        orders.cancelOrder(id);
-        return get(id);
+    public OrderResponse cancel(@PathVariable int id) {
+        return orders.cancel(id);
     }
 }

@@ -1,6 +1,6 @@
 # Tietokantaratkaisut_projekti
 
-REST API backend for a small webstore, built with Spring Boot on top of the course's MariaDB `webstore` schema. The API uses plain SQL (`JdbcTemplate`), so the database features (indexes, triggers, stored procedures with transactions, system versioning) do the heavy lifting.
+REST API backend for a small webstore, built with Spring Boot on top of the course's MariaDB `webstore` schema. Tables are mapped as JPA entities (Spring Data JPA / Hibernate). Business-critical operations run in the database itself: orders are placed and cancelled through stored procedures with transactions and row locking, and status changes are logged by a trigger.
 
 ## Contents
 
@@ -142,11 +142,14 @@ In VS Code: **Terminal → Run Task… → DB: run transaction tests (04)**. The
 │   ├── 04_transactions_test.sql     Tests for the procedures
 │   └── app_user.sql                 Least-privilege database user for the API
 ├── src/main/java/com/webstore/api/
-│   ├── product/                     Product endpoints and SQL
-│   ├── order/                       Order endpoints and SQL
+│   ├── customer/                    Customer, CustomerAddress entities
+│   ├── supplier/                    Supplier, SupplierAddress entities
+│   ├── product/                     Product, ProductCategory entities; product endpoints
+│   ├── order/                       Order, OrderItem, OrderLog entities; order endpoints,
+│   │                                stored procedure calls (OrderProcedures)
 │   └── common/                      Error handling, paging
 ├── src/main/resources/
-│   └── application.properties       DB connection and connection pool settings
+│   └── application.properties       DB connection, connection pool and JPA settings
 ├── .env.example                     Template for local DB credentials
 └── pom.xml                          Maven build (Spring Boot 4.1, Java 21)
 ```
@@ -155,7 +158,8 @@ In VS Code: **Terminal → Run Task… → DB: run transaction tests (04)**. The
 
 | Problem | Fix |
 |---|---|
-| `Access denied for user 'webstore_app'` | The password in `.env` doesn't match the one in `sql/app_user.sql`. Re-run step 1.3 with the right password, or change it with `ALTER USER 'webstore_app'@'localhost' IDENTIFIED BY '...';` |
+| `Access denied for user 'webstore_app'` | The password in `.env` doesn't match the database user's password. Note that `app_user.sql` uses `CREATE USER IF NOT EXISTS`, so re-running it does **not** change the password of an existing user. Set it directly: `ALTER USER 'webstore_app'@'localhost' IDENTIFIED BY '<password from .env>';` |
+| `Schema-validation: missing table` / `missing column` at startup | Hibernate checks at startup that the entities match the database (`ddl-auto=validate`). The database was probably loaded from the original course dump instead of `project_database_utf8.sql`; redo step 1.1. |
 | `PROCEDURE webstore.place_order does not exist` | Step 1.2 wasn't run, or was run against a different database. Reloading the dump (1.1) doesn't remove procedures, but creating a new database does. |
 | `Unknown database 'webstore'` | Step 1.1 wasn't run, or the database has a different name. Fix `DB_URL` in `.env`. |
 | `Port 8080 was already in use` | Another copy of the API is still running. Stop it, or start on another port with `./mvnw spring-boot:run -Dspring-boot.run.arguments=--server.port=8081`. |
