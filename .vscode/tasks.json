@@ -2,6 +2,13 @@
   "version": "2.0.0",
   "tasks": [
     {
+      "label": "API: run",
+      "type": "shell",
+      "command": "./mvnw spring-boot:run",
+      "isBackground": false,
+      "problemMatcher": []
+    },
+    {
       "label": "DB: install transactions (04)",
       "type": "shell",
       "command": "mariadb ${input:database} < sql/04_transactions.sql && echo 'Procedures installed.'",
@@ -11,7 +18,10 @@
       "label": "DB: run transaction tests (04)",
       "type": "shell",
       "command": "mariadb --force -t ${input:database} < sql/04_transactions_test.sql",
-      "group": { "kind": "test", "isDefault": true },
+      "group": {
+        "kind": "test",
+        "isDefault": true
+      },
       "problemMatcher": []
     }
   ],
@@ -20,7 +30,10 @@
       "id": "database",
       "type": "pickString",
       "description": "Database to run against",
-      "options": ["webstore_scratch", "webstore"],
+      "options": [
+        "webstore_scratch",
+        "webstore"
+      ],
       "default": "webstore_scratch"
     }
   ]
