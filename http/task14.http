@@ -1,0 +1,145 @@
+### Task 14 requests: converter, entity lifecycle events and optimistic locking.
+### VS Code "REST Client" extension (humao.rest-client) or Postman. Run them top to
+### bottom: later requests use the ids and versions returned by earlier ones.
+### Hibernate's SQL is logged (logging.level.org.hibernate.SQL=debug), so the console
+### shows what each request ran.
+
+@base = http://localhost:8080/api
+
+
+######################################################################
+### 1. Converter: Order.status <-> OrderStatus enum (OrderStatusConverter)
+######################################################################
+
+### Place an order: the place_order procedure stores the text 'NEW'
+# @name order
+POST {{base}}/orders
+Content-Type: application/json
+
+{ "customerId": 24, "shippingAddressId": 24, "items": [ { "productId": 456, "quantity": 1 } ] }
+
+### Load it: the converter turns the text 'NEW' into OrderStatus.NEW -> "status": "NEW"
+GET {{base}}/orders/{{order.response.body.$.id}}
+
+### Ship it: Java sets OrderStatus.SHIPPED, the converter stores the text 'SHIPPED'
+POST {{base}}/orders/{{order.response.body.$.id}}/ship
+
+### The trigger still sees ordinary text: NEW -> SHIPPED in orderlog
+GET {{base}}/orders/{{order.response.body.$.id}}/status-history
+
+### Check in MariaDB that the column still holds plain text:
+###   SELECT id, status FROM orders WHERE id = <order id>;
+
+
+######################################################################
+### 2. Lifecycle events: Customer.normalizeEmail (@PrePersist / @PreUpdate)
+######################################################################
+
+### Create: @PrePersist stores "testi.asiakas@example.fi"
+# @name customer
+POST {{base}}/customers
+Content-Type: application/json
+
+{ "firstName": "Testi", "lastName": "Asiakas", "email": "  Testi.Asiakas@Example.FI ", "phone": "040-1234567" }
+
+### Update: @PreUpdate stores "muutettu@example.fi"
+PUT {{base}}/customers/{{customer.response.body.$.id}}
+Content-Type: application/json
+
+{ "firstName": "Testi", "lastName": "Asiakas", "email": "MUUTETTU@Example.FI", "phone": "040-1234567" }
+
+### The subclass inherits the listener: "yritys@example.fi"
+# @name company
+POST {{base}}/company-customers
+Content-Type: application/json
+
+{ "firstName": "Yrjö", "lastName": "Yrittäjä", "email": " YRITYS@Example.FI", "companyName": "Tapahtuma Oy", "businessId": "3456789-1" }
+
+### Check in MariaDB:
+###   SELECT id, email FROM customers WHERE id IN (<customer id>, <company id>);
+
+### Clean up
+DELETE {{base}}/customers/{{customer.response.body.$.id}}
+
+###
+DELETE {{base}}/customers/{{company.response.body.$.id}}
+
+
+######################################################################
+### 3. Optimistic locking: Product.version (@Version)
+######################################################################
+
+### A category of its own, so the bulk update below only touches the test product
+# @name lockCategory
+POST {{base}}/categories
+Content-Type: application/json
+
+{ "name": "Lukitustesti", "description": "Optimistisen lukituksen testi" }
+
+### A test product: version 0
+# @name lockProduct
+POST {{base}}/products
+Content-Type: application/json
+
+{ "name": "Lukitustuote", "description": "Testituote", "price": 10.00, "stockQuantity": 20, "categoryId": {{lockCategory.response.body.$.id}}, "supplierId": 1 }
+
+### Admin A saves a price change with the version they loaded (0): 200, version becomes 1
+PUT {{base}}/products/{{lockProduct.response.body.$.id}}
+Content-Type: application/json
+
+{ "name": "Lukitustuote", "description": "Testituote", "price": 12.00, "stockQuantity": 20, "categoryId": {{lockCategory.response.body.$.id}}, "supplierId": 1, "version": 0 }
+
+### Admin B saves an old form that was loaded at version 0: 409, A's price is NOT overwritten
+PUT {{base}}/products/{{lockProduct.response.body.$.id}}
+Content-Type: application/json
+
+{ "name": "Lukitustuote", "description": "Testituote", "price": 10.00, "stockQuantity": 25, "categoryId": {{lockCategory.response.body.$.id}}, "supplierId": 1, "version": 0 }
+
+### Reload: price 12.00, version 1
+# @name reload1
+GET {{base}}/products/{{lockProduct.response.body.$.id}}
+
+### Bulk price change in the category (JPQL UPDATE) also increments the version: 1 -> 2
+POST {{base}}/products/bulk/price?categoryId={{lockCategory.response.body.$.id}}&factor=1.10
+
+### Saving with version 1 (loaded before the bulk change): 409
+PUT {{base}}/products/{{lockProduct.response.body.$.id}}
+Content-Type: application/json
+
+{ "name": "Lukitustuote", "description": "Testituote", "price": 12.00, "stockQuantity": 20, "categoryId": {{lockCategory.response.body.$.id}}, "supplierId": 1, "version": {{reload1.response.body.$.version}} }
+
+### Reload: version 2
+# @name reload2
+GET {{base}}/products/{{lockProduct.response.body.$.id}}
+
+### An order for the product: place_order reduces stock and increments the version: 2 -> 3
+POST {{base}}/orders
+Content-Type: application/json
+
+{ "customerId": 24, "shippingAddressId": 24, "items": [ { "productId": {{lockProduct.response.body.$.id}}, "quantity": 1 } ] }
+
+### Saving with version 2 (loaded before the order): 409, the stock change isn't overwritten
+PUT {{base}}/products/{{lockProduct.response.body.$.id}}
+Content-Type: application/json
+
+{ "name": "Lukitustuote", "description": "Testituote", "price": 13.20, "stockQuantity": 20, "categoryId": {{lockCategory.response.body.$.id}}, "supplierId": 1, "version": {{reload2.response.body.$.version}} }
+
+### Reload and save with the current version: 200
+# @name reload3
+GET {{base}}/products/{{lockProduct.response.body.$.id}}
+
+###
+PUT {{base}}/products/{{lockProduct.response.body.$.id}}
+Content-Type: application/json
+
+{ "name": "Lukitustuote", "description": "Päivitetty uusimman version päälle", "price": 13.20, "stockQuantity": 19, "categoryId": {{lockCategory.response.body.$.id}}, "supplierId": 1, "version": {{reload3.response.body.$.version}} }
+
+### Missing version: 400
+PUT {{base}}/products/{{lockProduct.response.body.$.id}}
+Content-Type: application/json
+
+{ "name": "Lukitustuote", "description": "Testituote", "price": 13.20, "stockQuantity": 19, "categoryId": {{lockCategory.response.body.$.id}}, "supplierId": 1 }
+
+### The test product is now on an order, so it stays in the database (products on
+### orders can't be deleted). Check its version in MariaDB:
+###   SELECT id, price, stock_quantity, version FROM products WHERE id = <product id>;

@@ -50,6 +50,10 @@ public class CustomerService {
         customer.setLastName(request.lastName());
         customer.setEmail(request.email());
         customer.setPhone(request.phone());
+        // @PreUpdate (Customer.normalizeEmail) runs only when Hibernate flushes the
+        // change. Flush now so the response shows the stored, normalized email, not
+        // the value as it arrived in the request.
+        customers.flush();
         return CustomerResponse.from(customer);
     }
 

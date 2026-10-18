@@ -82,10 +82,24 @@ public class ProductService {
         return get(id);
     }
 
+    /**
+     * Optimistic locking. The client sends back the version it loaded; if the product
+     * has been changed since (another admin's save, an order, a bulk update), the
+     * version no longer matches and the update is refused with 409 instead of
+     * overwriting that change. Hibernate's own version check (... where id=? and
+     * version=?) still covers two saves that reach the database at the same moment.
+     */
     @Transactional
     public ProductResponse update(int id, ProductRequest request) {
         Product product = products.findById(id)
                 .orElseThrow(() -> new NotFoundException("Product " + id + " not found"));
+        if (request.version() == null) {
+            throw new BadRequestException("version is required: send the version of the product you loaded");
+        }
+        if (request.version() != product.getVersion()) {
+            throw new ConflictException("Product " + id + " was changed by someone else (current version "
+                    + product.getVersion() + ", you sent " + request.version() + "). Reload it and try again.");
+        }
         product.setName(request.name());
         product.setDescription(request.description());
         product.setPrice(request.price());

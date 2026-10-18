@@ -31,6 +31,9 @@ public class ProductRepositoryCustomImpl implements ProductRepositoryCustom {
 
         // 4a. SET stockQuantity = stockQuantity + amount
         update.set(p.<Integer>get("stockQuantity"), cb.sum(p.get("stockQuantity"), amount));
+        // 4c. SET version = version + 1: a bulk update bypasses @Version, so it must
+        //     increment the version itself (optimistic locking, see Product.version)
+        update.set(p.<Integer>get("version"), cb.sum(p.<Integer>get("version"), 1));
 
         // 4b. WHERE: only the conditions that were given
         List<Predicate> conditions = new ArrayList<>();

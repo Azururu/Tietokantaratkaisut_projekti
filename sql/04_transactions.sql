@@ -104,9 +104,12 @@ BEGIN
       FROM tmp_order_items t
       JOIN products p ON p.id = t.product_id;
 
+    -- version + 1: optimistinen lukitus (tehtävä 14). Ylläpitäjän vanhentunut
+    -- tuotelomake ei voi enää kirjoittaa saldomuutoksen yli.
     UPDATE products p
       JOIN tmp_order_items t ON t.product_id = p.id
-       SET p.stock_quantity = p.stock_quantity - t.quantity;
+       SET p.stock_quantity = p.stock_quantity - t.quantity,
+           p.version = p.version + 1;
 
     COMMIT;
     DROP TEMPORARY TABLE IF EXISTS tmp_order_items;
@@ -142,9 +145,11 @@ BEGIN
     -- samassa transaktiossa.
     UPDATE orders SET status = 'CANCELLED' WHERE id = p_order_id;
 
+    -- version + 1: optimistinen lukitus (tehtävä 14)
     UPDATE products p
       JOIN orderitems oi ON oi.product_id = p.id
-       SET p.stock_quantity = p.stock_quantity + oi.quantity
+       SET p.stock_quantity = p.stock_quantity + oi.quantity,
+           p.version = p.version + 1
      WHERE oi.order_id = p_order_id;
 
     COMMIT;

@@ -18,6 +18,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
+import jakarta.persistence.Convert;
 
 /**
  * New orders are created by the place_order procedure, not by persisting this entity,
@@ -47,8 +48,9 @@ public class Order {
     private CustomerAddress shippingAddress;
 
     /** Changes are logged to orderlog by the orderstatuschange trigger. */
+    @Convert(converter = OrderStatusConverter.class)
     @Column(length = 50)
-    private String status;
+    private OrderStatus status;
 
     @OneToMany(mappedBy = "order")
     @OrderBy("id.productId")
@@ -85,15 +87,15 @@ public class Order {
         this.shippingAddress = shippingAddress;
     }
 
-    public String getStatus() {
+    public List<OrderItem> getItems() {
+        return items;
+    }
+
+    public OrderStatus getStatus() {
         return status;
     }
 
-    public void setStatus(String status) {
+    public void setStatus(OrderStatus status) {
         this.status = status;
-    }
-
-    public List<OrderItem> getItems() {
-        return items;
     }
 }

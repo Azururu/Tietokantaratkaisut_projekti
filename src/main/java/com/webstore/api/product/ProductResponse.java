@@ -12,7 +12,8 @@ public record ProductResponse(
         Integer categoryId,
         String categoryName,
         Integer supplierId,
-        String supplierName) {
+        String supplierName,
+        int version) {
 
     static ProductResponse from(CatalogProduct p) {
         return new ProductResponse(
@@ -25,6 +26,7 @@ public record ProductResponse(
                 p.getCategoryId(),
                 p.getCategoryName(),
                 p.getSupplierId(),
-                p.getSupplierName());
+                p.getSupplierName(),
+                p.getVersion());
     }
 }

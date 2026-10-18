@@ -33,7 +33,8 @@ SELECT p.id,
        p.category_id,
        c.name AS category_name,
        p.supplier_id,
-       s.name AS supplier_name
+       s.name AS supplier_name,
+       p.version   -- optimistinen lukitus (tehtävä 14): asiakas lähettää tämän takaisin PUTissa
   FROM products p
   LEFT JOIN productcategories c ON c.id = p.category_id
   LEFT JOIN suppliers s ON s.id = p.supplier_id;

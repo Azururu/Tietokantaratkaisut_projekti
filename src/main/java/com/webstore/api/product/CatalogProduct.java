@@ -50,6 +50,9 @@ public class CatalogProduct {
     @Column(name = "supplier_name")
     private String supplierName;
 
+    /** products.version, for optimistic locking: the client sends it back when updating. */
+    private int version;
+
     protected CatalogProduct() {
     }
 
@@ -91,5 +94,9 @@ public class CatalogProduct {
 
     public String getSupplierName() {
         return supplierName;
+    }
+
+    public int getVersion() {
+        return version;
     }
 }

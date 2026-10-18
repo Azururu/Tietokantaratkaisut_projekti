@@ -29,8 +29,11 @@ public interface ProductRepository extends JpaRepository<Product, Integer>, Prod
     /**
      * Multiplies the price of every product in the category in one UPDATE statement,
      * instead of loading and saving the products one by one.
+     * A bulk UPDATE bypasses @Version, so it increments the version itself: otherwise
+     * an admin's stale edit form could overwrite the new prices (optimistic locking).
      */
     @Modifying(clearAutomatically = true, flushAutomatically = true)
-    @Query("update Product p set p.price = p.price * :factor where p.category.id = :categoryId")
+    @Query("update Product p set p.price = p.price * :factor, p.version = p.version + 1"
+            + " where p.category.id = :categoryId")
     int updatePriceByCategory(@Param("factor") BigDecimal factor, @Param("categoryId") int categoryId);
 }

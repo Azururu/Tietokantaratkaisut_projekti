@@ -2,6 +2,7 @@ package com.webstore.api.customer;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 import com.webstore.api.order.Order;
 
@@ -16,6 +17,8 @@ import jakarta.persistence.Inheritance;
 import jakarta.persistence.InheritanceType;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.OneToOne;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 
 /**
@@ -167,6 +170,20 @@ public class Customer {
         this.profile = profile;
         if (profile != null) {
             profile.setCustomer(this);
+        }
+    }
+
+        /**
+     * Lifecycle event: runs automatically before every INSERT (@PrePersist) and
+     * UPDATE (@PreUpdate) of a customer, whichever code path saves it.
+     * "  Maija@Example.FI " and "maija@example.fi" are the same address; storing one
+     * form keeps lookups through the idx_email index reliable.
+     */
+    @PrePersist
+    @PreUpdate
+    private void normalizeEmail() {
+        if (email != null) {
+            email = email.trim().toLowerCase(Locale.ROOT);
         }
     }
 }

@@ -49,10 +49,10 @@ public class OrderService {
     public OrderResponse ship(int id) {
         Order order = orders.findForUpdateById(id)
                 .orElseThrow(() -> new NotFoundException("Order " + id + " not found"));
-        if (!"NEW".equals(order.getStatus())) {
+        if (order.getStatus() != OrderStatus.NEW) {
             throw new ConflictException("Only NEW orders can be shipped");
         }
-        order.setStatus("SHIPPED");
+        order.setStatus(OrderStatus.SHIPPED);
         order.setDeliveryDate(LocalDateTime.now().withNano(0)); // DATETIME column: whole seconds
         orders.flush();
         return get(id);

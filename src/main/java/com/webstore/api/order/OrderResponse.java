@@ -55,7 +55,7 @@ public record OrderResponse(
                 order.getCustomer().getFullName(),
                 order.getOrderDate(),
                 order.getDeliveryDate(),
-                order.getStatus(),
+                order.getStatus() == null ? null : order.getStatus().name(),
                 ShippingAddress.from(order.getShippingAddress()),
                 items,
                 total);

@@ -37,7 +37,7 @@ Content-Type: application/json
   "supplierId": 59
 }
 
-### Update the product
+### Update the product (sends back the version it loaded: optimistic locking)
 PUT {{base}}/products/{{product.response.body.$.id}}
 Content-Type: application/json
 
@@ -47,7 +47,8 @@ Content-Type: application/json
   "price": 59.90,
   "stockQuantity": 10,
   "categoryId": {{category.response.body.$.id}},
-  "supplierId": 59
+  "supplierId": 59,
+  "version": {{product.response.body.$.version}}
 }
 
 ### Search: products in stock in the new category

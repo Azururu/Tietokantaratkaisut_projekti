@@ -17,6 +17,7 @@ import jakarta.persistence.JoinTable;
 import jakarta.persistence.ManyToMany;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 
 @Entity
 @Table(name = "products")
@@ -37,6 +38,17 @@ public class Product {
 
     @Column(name = "stock_quantity", nullable = false)
     private int stockQuantity;
+
+    /**
+     * Optimistic locking (sql/15_product_version.sql). Hibernate adds "and version = ?"
+     * to every UPDATE of a product and increments the value; if another change came
+     * first, the UPDATE matches 0 rows and Hibernate throws an optimistic locking
+     * exception instead of silently overwriting that change (a lost update).
+     * Never set by hand. Changes made outside JPA (the place_order / cancel_order
+     * procedures and the bulk updates in ProductRepository) increment it themselves.
+     */
+    @Version
+    private int version;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "category_id")
@@ -114,6 +126,10 @@ public class Product {
 
     public void setStockQuantity(int stockQuantity) {
         this.stockQuantity = stockQuantity;
+    }
+
+    public int getVersion() {
+        return version;
     }
 
     public ProductCategory getCategory() {
