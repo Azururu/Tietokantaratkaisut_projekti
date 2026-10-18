@@ -105,6 +105,27 @@ public class ProductCategory {
 
 It was tested through the [category endpoints](#get-apicategories): `save()` ran `insert into productcategories (description,name) values (?,?)` and returned the new id, the new row came back from `GET`, an update ran `update productcategories set description=?,name=? where id=?`, and a delete removed it (all against the real database). At startup, Hibernate also validates every entity against the schema (`ddl-auto=validate`).
 
+### N:M, 1:1 and inheritance
+
+| Relationship | Why | Database | JPA |
+|---|---|---|---|
+| **N:M** product ↔ supplier | A product can be ordered from several suppliers (e.g. a backup supplier), and a supplier delivers many products | Join table `product_suppliers(product_id, supplier_id)` ([sql/12_product_suppliers.sql](sql/12_product_suppliers.sql)). `products.supplier_id` stays as the primary supplier | `Product.suppliers`: `@ManyToMany` + `@JoinTable` (owning side, `Set`, no cascade); `Supplier.products`: `mappedBy` |
+| **1:1** customer ↔ profile | Optional extra details (birth date, language, marketing consent, loyalty points) that orders don't need; keeps the system-versioned `customers` table unchanged | `customer_profiles.customer_id` is both primary key and foreign key ([sql/13_customer_profiles.sql](sql/13_customer_profiles.sql)) | `CustomerProfile.customer`: `@OneToOne` + `@MapsId`; `Customer.profile`: `mappedBy`, `cascade = ALL`, `orphanRemoval` |
+| **Inheritance** `CompanyCustomer extends Customer` | A company customer has all customer fields plus company name, business ID, VAT number and invoice reference | `company_customers.customer_id` is both primary key and foreign key ([sql/14_company_customers.sql](sql/14_company_customers.sql)) | `@Inheritance(strategy = JOINED)` on `Customer`, `@PrimaryKeyJoinColumn` on `CompanyCustomer` |
+
+**Why `JOINED`:** `SINGLE_TABLE` would add nullable company columns to the large system-versioned `customers` table, and `TABLE_PER_CLASS` would break the single foreign key from orders and addresses to customers. `JOINED` leaves `customers` unchanged and allows `NOT NULL` company fields, at the cost of one extra join.
+
+Tested manually with [http/associations.http](http/associations.http) (save, fetch and delete for all three). Example, all products of a supplier through the join table:
+
+```java
+@Query("select p from Product p join p.suppliers s where s.id = :supplierId")
+List<Product> findBySupplierId(@Param("supplierId") Integer supplierId);
+```
+
+```sh
+curl "http://localhost:8080/api/suppliers/1/products"
+```
+
 ## API specification
 
 The API has five resources. The store front uses products, customers and orders; store management also maintains categories and products, ships orders, and reads reports.
@@ -167,6 +188,14 @@ mariadb -u root -p -e "ALTER USER 'webstore_app'@'localhost' IDENTIFIED BY '<app
 ```
 
 This creates four users with their own roles (see [Security](#security)). The API uses `webstore_app`; set the other users' passwords the same way when you need them. The script uses `CREATE USER IF NOT EXISTS`, so re-running it never changes an existing password.
+
+**1.4 Create the N:M, 1:1 and inheritance tables** (with demo data and grants, so run them after 1.3):
+
+```sh
+mariadb -u root -p webstore -e "source sql/12_product_suppliers.sql"
+mariadb -u root -p webstore -e "source sql/13_customer_profiles.sql"
+mariadb -u root -p webstore -e "source sql/14_company_customers.sql"
+```
 
 ### 2. Configure the API
 
@@ -257,6 +286,10 @@ Business errors come straight from the stored procedures (`SIGNAL SQLSTATE '4500
 | POST | [`/api/products`](#post-apiproducts) | Create a product |
 | PUT | [`/api/products/{id}`](#put-apiproductsid) | Update a product |
 | DELETE | [`/api/products/{id}`](#delete-apiproductsid) | Delete a product |
+| GET | `/api/products/{id}/suppliers` | A product's suppliers (N:M) |
+| POST | `/api/products/{id}/suppliers/{supplierId}` | Link a supplier to a product (`409` if already linked) |
+| DELETE | `/api/products/{id}/suppliers/{supplierId}` | Unlink a supplier from a product |
+| GET | `/api/suppliers/{id}/products` | A supplier's products (N:M) |
 | GET | [`/api/customers/{id}`](#get-apicustomersid) | One customer with addresses |
 | POST | [`/api/customers`](#post-apicustomers) | Create a customer with addresses |
 | PUT | [`/api/customers/{id}`](#put-apicustomersid) | Update a customer |
@@ -265,6 +298,11 @@ Business errors come straight from the stored procedures (`SIGNAL SQLSTATE '4500
 | DELETE | [`/api/customers/{id}/addresses/{addressId}`](#delete-apicustomersidaddressesaddressid) | Remove an address |
 | GET | [`/api/customers/{id}/history`](#get-apicustomersidhistory) | All versions of a customer (temporal) |
 | GET | [`/api/customers/{id}/orders`](#get-apicustomersidorders) | A customer's order history |
+| GET | `/api/customers/{id}/profile` | A customer's profile (1:1) |
+| PUT | `/api/customers/{id}/profile` | Create or update the profile |
+| DELETE | `/api/customers/{id}/profile` | Delete the profile (the customer stays) |
+| GET | `/api/company-customers` | All company customers |
+| POST | `/api/company-customers` | Create a company customer (`409` if the business ID is taken) |
 | GET | [`/api/orders/{id}`](#get-apiordersid) | One order with its lines |
 | POST | [`/api/orders`](#post-apiorders) | Place an order |
 | POST | [`/api/orders/{id}/ship`](#post-apiordersidship) | Mark an order shipped |
@@ -466,7 +504,7 @@ Deletes a product. Returns `204 No Content`. A product that appears on any order
 
 #### `GET /api/customers/{id}`
 
-A customer with their addresses. The addresses are a lazily loaded 1:M collection, read inside the service transaction. `404` if the customer doesn't exist.
+A customer with their addresses. The addresses are a lazily loaded 1:M collection, read inside the service transaction. `type` is `Customer` or `CompanyCustomer`; for a company customer, `company` holds the company details (otherwise `null`). `404` if the customer doesn't exist.
 
 ```sh
 curl "http://localhost:8080/api/customers/24"
@@ -475,13 +513,15 @@ curl "http://localhost:8080/api/customers/24"
 ```json
 {
   "id": 24,
+  "type": "Customer",
   "firstName": "Christine",
   "lastName": "Davidson",
   "email": "andersonsandra24@example.org",
   "phone": "+1-506-712-4802x6247",
   "addresses": [
     { "id": 24, "streetAddress": "9500 Jessica Park", "postalCode": "94882", "city": "Port Steven", "country": "Yemen" }
-  ]
+  ],
+  "company": null
 }
 ```
 
@@ -511,6 +551,7 @@ Response: `201 Created`, a `Location: /api/customers/100001` header, and the cus
 ```json
 {
   "id": 100001,
+  "type": "Customer",
   "firstName": "Maija",
   "lastName": "Meikäläinen",
   "email": "maija@example.fi",
@@ -518,7 +559,8 @@ Response: `201 Created`, a `Location: /api/customers/100001` header, and the cus
   "addresses": [
     { "id": 100001, "streetAddress": "Mannerheimintie 1", "postalCode": "00100", "city": "Helsinki", "country": "Suomi" },
     { "id": 100002, "streetAddress": "Hämeenkatu 5", "postalCode": "33100", "city": "Tampere", "country": "Suomi" }
-  ]
+  ],
+  "company": null
 }
 ```
 
@@ -845,6 +887,9 @@ curl "http://localhost:8080/api/reports/monthly-sales?from=2025-01&to=2025-02"
 | `products` | 1 000 | Name, description, price, stock, category, supplier |
 | `productcategories` | 10 | Category names and descriptions |
 | `suppliers`, `supplieraddresses` | 100 each | Suppliers and their addresses |
+| `product_suppliers` | ~1 020 | N:M join table: which suppliers can deliver which products |
+| `customer_profiles` | 50 (demo) | 1:1 customer profile; `customer_id` is primary key and foreign key |
+| `company_customers` | 10 (demo) | Company details of company customers (`JOINED` inheritance) |
 | `orders` | 200 000 | Customer, dates, shipping address, status (`NEW`, `SHIPPED`, `CANCELLED`) |
 | `orderitems` | 1 100 000 | Order lines: product, quantity and the unit price at the time of ordering. Primary key `(order_id, product_id)` |
 | `orderlog` | grows | Order status changes, written by the trigger |
@@ -969,7 +1014,7 @@ Permissions are granted to **roles**, and each user gets one role ([sql/08_secur
 | User | Role | May | May not |
 |---|---|---|---|
 | `webstore_admin` | `webstore_admin` | Everything in the `webstore` database, including schema changes | Touch other databases, create users |
-| `webstore_app` | `webstore_api` | Read, insert, update and delete products, categories, suppliers, customers and addresses; read and update orders; read order lines and `orderlog`; read the views; run `place_order` / `cancel_order` | Insert or delete orders directly (only through the procedures, which check stock in a transaction); write `orderlog` (only the trigger does); read `contacts`; change the schema |
+| `webstore_app` | `webstore_api` | Read, insert, update and delete products, categories, suppliers, customers, addresses, customer profiles and company customers; read, insert and delete product–supplier links; read and update orders; read order lines and `orderlog`; read the views; run `place_order` / `cancel_order` | Insert or delete orders directly (only through the procedures, which check stock in a transaction); write `orderlog` (only the trigger does); read `contacts`; change the schema |
 | `webstore_report` | `webstore_reporting` | Read `v_product_sales`, `v_monthly_sales`, `v_product_catalog` | Read any table, or any view with personal data (customer names, emails, phones, addresses) |
 | `webstore_backup` | `webstore_backup` | Read everything a dump needs (`SELECT`, `SHOW VIEW`, `TRIGGER`, `LOCK TABLES`, `SHOW CREATE ROUTINE`) | Change any data |
 
@@ -1013,7 +1058,7 @@ The transaction test *expects* some calls to fail, which is why it runs with `--
 
 In VS Code: **Terminal → Run Task… → DB: run transaction tests (04)** or **DB: run view tests (06)**. These tasks log in as your OS user without a password (works with Homebrew MariaDB on macOS); elsewhere use the commands above.
 
-**API:** every endpoint and error case in the [API reference](#api-reference) was called against the full dataset; the examples above are real responses. The files in [http/](http/) run the main flows from VS Code with the **REST Client** extension: [catalog.http](http/catalog.http) (category and product create → update → delete), [customers.http](http/customers.http) (create with addresses → update → add and remove an address → history → delete) and [orders.http](http/orders.http) (place → ship → status history, place → cancel).
+**API:** every endpoint and error case in the [API reference](#api-reference) was called against the full dataset; the examples above are real responses. The files in [http/](http/) run the main flows from VS Code with the **REST Client** extension: [catalog.http](http/catalog.http) (category and product create → update → delete), [customers.http](http/customers.http) (create with addresses → update → add and remove an address → history → delete), [orders.http](http/orders.http) (place → ship → status history, place → cancel) and [associations.http](http/associations.http) (N:M link → fetch → unlink, 1:1 profile create → update → delete, company customer create → fetch → delete).
 
 ## Project structure
 
@@ -1025,7 +1070,10 @@ In VS Code: **Terminal → Run Task… → DB: run transaction tests (04)** or *
 │   ├── 04_transactions_test.sql     Tests for the procedures
 │   ├── 06_views.sql                 Views
 │   ├── 06_views_test.sql            Example queries against the views
-│   └── 08_security.sql              Database users and roles
+│   ├── 08_security.sql              Database users and roles
+│   ├── 12_product_suppliers.sql     N:M join table (+ rollback script)
+│   ├── 13_customer_profiles.sql     1:1 profile table (+ rollback script)
+│   └── 14_company_customers.sql     Inheritance subclass table (+ rollback script)
 ├── scripts/
 │   ├── backup.sh                    Nightly backup
 │   └── restore_test.sh              Restores a backup into a test database and compares
@@ -1036,15 +1084,17 @@ In VS Code: **Terminal → Run Task… → DB: run transaction tests (04)** or *
 ├── http/
 │   ├── catalog.http                 Category and product requests (VS Code REST Client)
 │   ├── customers.http               Customer requests
-│   └── orders.http                  Order requests: place, ship, cancel, status history
+│   ├── orders.http                  Order requests: place, ship, cancel, status history
+│   └── associations.http            N:M, 1:1 and inheritance requests
 ├── src/main/java/com/webstore/api/
 │   ├── product/                     Product, ProductCategory entities; CatalogProduct (view);
 │   │                                product and category endpoints
 │   ├── order/                       Order, OrderItem, OrderLog entities; OrderSummary (view);
 │   │                                order endpoints; OrderProcedures (stored procedure calls)
 │   ├── customer/                    Customer, CustomerAddress entities (1:M with cascade);
-│   │                                customer endpoints and history
-│   ├── supplier/                    Supplier, SupplierAddress entities
+│   │                                CustomerProfile (1:1), CompanyCustomer (inheritance);
+│   │                                customer, profile and company customer endpoints
+│   ├── supplier/                    Supplier, SupplierAddress entities; supplier's products endpoint
 │   ├── report/                      ProductSales, MonthlySales (views); report endpoints
 │   └── common/                      Error handling, paging
 ├── src/main/resources/
