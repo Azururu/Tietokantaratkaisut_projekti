@@ -12,15 +12,30 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Inheritance;
+import jakarta.persistence.InheritanceType;
 import jakarta.persistence.OneToMany;
+import jakarta.persistence.OneToOne;
 import jakarta.persistence.Table;
 
 /**
  * The customers table is system-versioned (WITH SYSTEM VERSIONING). Its hidden
  * row_start / row_end columns are managed by MariaDB and are not mapped here.
+ *
+ * Inheritance root: CompanyCustomer extends Customer (sql/14_company_customers.sql).
+ * Strategy JOINED: the fields shared by all customers stay in customers, and each
+ * subclass has its own table whose primary key is also a foreign key to customers.id.
+ * Every customer query therefore left-joins company_customers, and Hibernate returns a
+ * CompanyCustomer when the join finds a row, otherwise a plain Customer.
+ *
+ * Chosen over SINGLE_TABLE (would add nullable company columns and a type column to
+ * the large system-versioned customers table) and TABLE_PER_CLASS (orders and
+ * addresses could no longer reference all customers through one foreign key, and
+ * IDENTITY ids can't be used). The cost of JOINED is one extra join.
  */
 @Entity
 @Table(name = "customers")
+@Inheritance(strategy = InheritanceType.JOINED)
 public class Customer {
 
     @Id
@@ -55,6 +70,19 @@ public class Customer {
      */
     @OneToMany(mappedBy = "customer", fetch = FetchType.LAZY)
     private List<Order> orders = new ArrayList<>();
+
+    /**
+     * 1:1, inverse side of CustomerProfile.customer (which owns the shared primary key).
+     * The profile belongs entirely to the customer, like the addresses: saving the
+     * customer saves the profile, deleting the customer deletes it (cascade ALL), and
+     * setProfile(null) deletes it (orphanRemoval). Optional: null if there is no profile.
+     *
+     * LAZY is only a hint here. On the inverse side Hibernate can't know whether a
+     * profile exists without querying customer_profiles, so it can't hand out a lazy
+     * proxy and loads the profile together with the customer.
+     */
+    @OneToOne(mappedBy = "customer", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    private CustomerProfile profile;
 
     protected Customer() {
     }
@@ -123,5 +151,22 @@ public class Customer {
 
     public List<Order> getOrders() {
         return orders;
+    }
+
+    public CustomerProfile getProfile() {
+        return profile;
+    }
+
+    /**
+     * Sets or removes (null) the profile and keeps both sides in sync.
+     * To change an existing profile, update its fields instead of passing a new
+     * object: the new one would have the same primary key (the customer's id), and
+     * Hibernate inserts it before deleting the old one, which fails as a duplicate key.
+     */
+    public void setProfile(CustomerProfile profile) {
+        this.profile = profile;
+        if (profile != null) {
+            profile.setCustomer(this);
+        }
     }
 }

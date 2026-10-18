@@ -1,0 +1,173 @@
+### Task 12 requests: N:M (product <-> supplier), 1:1 (customer <-> profile) and
+### inheritance (CompanyCustomer extends Customer), for the VS Code "REST Client"
+### extension (humao.rest-client) or Postman. Run them top to bottom: later requests
+### use the ids created by earlier ones.
+### To see the SQL Hibernate runs, start the API with:
+###   ./mvnw spring-boot:run -Dspring-boot.run.arguments=--logging.level.org.hibernate.SQL=DEBUG
+
+@base = http://localhost:8080/api
+
+
+######################################################################
+### N:M  Product <-> Supplier  (join table product_suppliers)
+######################################################################
+
+### Example: all products of supplier 1 (primarySupplier = false means linked only via the join table)
+GET {{base}}/suppliers/1/products
+
+### All suppliers of product 1 (the demo data gave products 1-20 two suppliers)
+GET {{base}}/products/1/suppliers
+
+### Save: link supplier 3 to product 1 -> insert into product_suppliers
+POST {{base}}/products/1/suppliers/3
+
+### Product 1 now has three suppliers
+GET {{base}}/products/1/suppliers
+
+### ...and supplier 3's products now include product 1
+GET {{base}}/suppliers/3/products
+
+### Linking the same pair again: 409
+POST {{base}}/products/1/suppliers/3
+
+### Delete: unlink supplier 3 -> deletes only that one row from product_suppliers
+DELETE {{base}}/products/1/suppliers/3
+
+### Back to two suppliers; supplier 3 itself still exists
+GET {{base}}/products/1/suppliers
+
+### Unlinking a pair that isn't linked: 404
+DELETE {{base}}/products/1/suppliers/3
+
+### Deleting a product removes its join rows. Create a product (primary supplier 59)...
+# @name nmProduct
+POST {{base}}/products
+Content-Type: application/json
+
+{ "name": "Testituote N:M", "description": "Kahden toimittajan tuote", "price": 9.90, "stockQuantity": 5, "categoryId": 1, "supplierId": 59 }
+
+### ...link suppliers 59 and 60 to it
+POST {{base}}/products/{{nmProduct.response.body.$.id}}/suppliers/59
+
+###
+POST {{base}}/products/{{nmProduct.response.body.$.id}}/suppliers/60
+
+### Supplier 60's products include the new product
+GET {{base}}/suppliers/60/products
+
+### Delete the product: Hibernate deletes its product_suppliers rows first, then the product
+DELETE {{base}}/products/{{nmProduct.response.body.$.id}}
+
+### Supplier 60 still exists, the deleted product is gone from its list
+GET {{base}}/suppliers/60/products
+
+
+######################################################################
+### 1:1  Customer <-> CustomerProfile  (shared primary key)
+######################################################################
+
+### Fetch an existing profile (customers 1-50 have one from the demo data)
+GET {{base}}/customers/10/profile
+
+### Customer 51 has no profile: 404
+GET {{base}}/customers/51/profile
+
+### Create a new customer for the save/delete tests
+# @name profileCustomer
+POST {{base}}/customers
+Content-Type: application/json
+
+{ "firstName": "Pekka", "lastName": "Profiili", "email": "pekka@example.fi", "phone": "040-3333333" }
+
+### No profile yet: 404
+GET {{base}}/customers/{{profileCustomer.response.body.$.id}}/profile
+
+### Save: create the profile (saved through the cascade, customerId = the customer's id)
+PUT {{base}}/customers/{{profileCustomer.response.body.$.id}}/profile
+Content-Type: application/json
+
+{ "birthDate": "1990-05-17", "preferredLanguage": "fi", "marketingConsent": true, "loyaltyPoints": 120 }
+
+### Fetch it
+GET {{base}}/customers/{{profileCustomer.response.body.$.id}}/profile
+
+### Update: the same row is updated, not replaced
+PUT {{base}}/customers/{{profileCustomer.response.body.$.id}}/profile
+Content-Type: application/json
+
+{ "birthDate": "1990-05-17", "preferredLanguage": "en", "marketingConsent": false, "loyaltyPoints": 250 }
+
+### Delete only the profile (orphanRemoval): the customer stays
+DELETE {{base}}/customers/{{profileCustomer.response.body.$.id}}/profile
+
+### Profile gone: 404 ...
+GET {{base}}/customers/{{profileCustomer.response.body.$.id}}/profile
+
+### ... customer still there
+GET {{base}}/customers/{{profileCustomer.response.body.$.id}}
+
+### Create the profile again, then delete the whole customer: the profile goes too (cascade)
+PUT {{base}}/customers/{{profileCustomer.response.body.$.id}}/profile
+Content-Type: application/json
+
+{ "birthDate": "1990-05-17", "marketingConsent": true, "loyaltyPoints": 10 }
+
+###
+DELETE {{base}}/customers/{{profileCustomer.response.body.$.id}}
+
+### Check in MariaDB that no profile row is left:
+###   SELECT * FROM customer_profiles WHERE customer_id = <id>;
+
+
+######################################################################
+### Inheritance  CompanyCustomer extends Customer  (JOINED)
+######################################################################
+
+### Polymorphic fetch: customer 55 is a company customer -> type "CompanyCustomer" + company details
+GET {{base}}/customers/55
+
+### Customer 1 is a plain customer -> type "Customer", company null
+GET {{base}}/customers/1
+
+### Company customers only (51-60 from the demo data)
+GET {{base}}/company-customers
+
+### Save: one request inserts a customers row and a company_customers row with the same id
+# @name company
+POST {{base}}/company-customers
+Content-Type: application/json
+
+{
+  "firstName": "Liisa",
+  "lastName": "Laskuttaja",
+  "email": "liisa@yritys.fi",
+  "phone": "09-1234567",
+  "addresses": [
+    { "streetAddress": "Teollisuuskatu 10", "postalCode": "00510", "city": "Helsinki", "country": "Suomi" }
+  ],
+  "companyName": "Testiyritys Oy",
+  "businessId": "2345678-9",
+  "vatNumber": "FI23456789",
+  "invoiceReference": "KP-500"
+}
+
+### Fetch it through the common customer endpoint
+GET {{base}}/customers/{{company.response.body.$.id}}
+
+### The same business ID again: 409
+POST {{base}}/company-customers
+Content-Type: application/json
+
+{ "firstName": "Toinen", "lastName": "Henkilö", "email": "toinen@yritys.fi", "companyName": "Kopio Oy", "businessId": "2345678-9" }
+
+### Badly formatted business ID: 400
+POST {{base}}/company-customers
+Content-Type: application/json
+
+{ "firstName": "Väärä", "lastName": "Tunnus", "email": "vaara@yritys.fi", "companyName": "Väärä Oy", "businessId": "123" }
+
+### Delete: removes the company_customers row and the customers row (and the address)
+DELETE {{base}}/customers/{{company.response.body.$.id}}
+
+### Gone: 404
+GET {{base}}/customers/{{company.response.body.$.id}}

@@ -31,8 +31,9 @@ The API serves a store front (product search, customer accounts and addresses, o
 | **Users and roles** | 4 roles (admin, API, reporting, backup); the API can't change the schema or bypass the order procedures | [Security](#security) |
 | **Backups** | Nightly backup script and an automatic restore test | [Backups](#backups-and-schema-changes) |
 | **Schema changes** | Plan for changing the production schema without downtime | [Schema changes](#backups-and-schema-changes) |
-| **JPA / Hibernate** | 14 entities (10 tables, 4 views); the mapping is checked against the real schema at startup | [JPA entities](#jpa-entities) |
+| **JPA / Hibernate** | 16 entities (12 tables, 4 views); the mapping is checked against the real schema at startup | [JPA entities](#jpa-entities) |
 | **1:M associations, cascade, lazy loading** | Customer → addresses with `cascade = ALL` + `orphanRemoval` (one `save()` stores a customer and its addresses); customer → orders deliberately without cascade; everything `LAZY`, measured against `EAGER` (2 vs 202 queries for a list of 100 customers) | [docs/jpa-associations.md](docs/jpa-associations.md) |
+| **N:M, 1:1, inheritance** | Product ↔ supplier `@ManyToMany` through the join table `product_suppliers`; customer ↔ profile `@OneToOne` with a shared primary key (`@MapsId`); `CompanyCustomer extends Customer` with the `JOINED` strategy | [N:M, 1:1 and inheritance](#nm-11-and-inheritance) |
 
 ## Architecture
 
@@ -71,9 +72,11 @@ Each table is a JPA entity class with annotations that map it to the table; each
 | Entity | Table / view | Relationships |
 |---|---|---|
 | `ProductCategory` | `productcategories` | none (standalone) |
-| `Supplier`, `SupplierAddress` | `suppliers`, `supplieraddresses` | supplier 1:M addresses |
-| `Product` | `products` | M:1 category, M:1 supplier |
-| `Customer`, `CustomerAddress` | `customers`, `customeraddresses` | customer 1:M addresses (cascade), customer 1:M orders |
+| `Supplier`, `SupplierAddress` | `suppliers`, `supplieraddresses` | supplier 1:M addresses; supplier N:M products (inverse side) |
+| `Product` | `products` | M:1 category, M:1 primary supplier, N:M suppliers (`product_suppliers`) |
+| `Customer`, `CustomerAddress` | `customers`, `customeraddresses` | customer 1:M addresses (cascade), customer 1:M orders, customer 1:1 profile (cascade) |
+| `CustomerProfile` | `customer_profiles` | 1:1 customer, shared primary key (`@MapsId`) |
+| `CompanyCustomer` | `company_customers` | subclass of `Customer` (`JOINED` inheritance) |
 | `Order`, `OrderItem` | `orders`, `orderitems` | order M:1 customer, M:1 address, 1:M items; item M:1 product; composite key `OrderItemId` (`@EmbeddedId` + `@MapsId`) |
 | `OrderLog` | `orderlog` | read-only, written by the trigger |
 | `CatalogProduct`, `OrderSummary`, `ProductSales`, `MonthlySales` | the four views | read-only |

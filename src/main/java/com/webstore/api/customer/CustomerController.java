@@ -64,4 +64,22 @@ public class CustomerController {
     public List<CustomerVersion> history(@PathVariable int id) {
         return customers.history(id);
     }
+
+    // 1:1 profile: the URL has no profile id, the customer's id identifies it (shared primary key).
+
+    @GetMapping("/{id}/profile")
+    public ProfileResponse getProfile(@PathVariable int id) {
+        return customers.getProfile(id);
+    }
+
+    @PutMapping("/{id}/profile")
+    public ProfileResponse putProfile(@PathVariable int id, @Valid @RequestBody ProfileRequest request) {
+        return customers.putProfile(id, request);
+    }
+
+    @DeleteMapping("/{id}/profile")
+    public ResponseEntity<Void> deleteProfile(@PathVariable int id) {
+        customers.deleteProfile(id);
+        return ResponseEntity.noContent().build();
+    }
 }

@@ -2,6 +2,7 @@ package com.webstore.api.product;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
 
@@ -18,6 +19,7 @@ import com.webstore.api.common.NotFoundException;
 import com.webstore.api.common.PageResponse;
 import com.webstore.api.supplier.Supplier;
 import com.webstore.api.supplier.SupplierRepository;
+import com.webstore.api.supplier.SupplierResponse;
 
 @Service
 @Transactional(readOnly = true)
@@ -103,6 +105,68 @@ public class ProductService {
             throw new ConflictException("Product " + id + " is on orders and can't be deleted");
         }
         products.delete(product);
+    }
+
+    // ---------------------------------------------------------------------
+    // N:M Product <-> Supplier (join table product_suppliers)
+    // ---------------------------------------------------------------------
+
+    /** All suppliers of a product: reads Product.suppliers (LAZY, loaded here). */
+    public List<SupplierResponse> suppliersOf(int productId) {
+        Product product = findProduct(productId);
+        return product.getSuppliers().stream()
+                .sorted(Comparator.comparing(Supplier::getId))
+                .map(s -> SupplierResponse.from(s, isPrimary(product, s)))
+                .toList();
+    }
+
+    /** All products of a supplier, through the join table (ProductRepository.findBySupplierId). */
+    public List<SupplierProductResponse> productsOf(int supplierId) {
+        if (!suppliers.existsById(supplierId)) {
+            throw new NotFoundException("Supplier " + supplierId + " not found");
+        }
+        return products.findBySupplierId(supplierId).stream()
+                .sorted(Comparator.comparing(Product::getId))
+                .map(p -> SupplierProductResponse.from(p, supplierId))
+                .toList();
+    }
+
+    /**
+     * Adds a row to product_suppliers. Only the owning side (Product.suppliers) is
+     * written to the database; addSupplier also updates Supplier.products in memory.
+     */
+    @Transactional
+    public List<SupplierResponse> addSupplier(int productId, int supplierId) {
+        Product product = findProduct(productId);
+        Supplier supplier = suppliers.findById(supplierId)
+                .orElseThrow(() -> new NotFoundException("Supplier " + supplierId + " not found"));
+        if (product.getSuppliers().contains(supplier)) {
+            throw new ConflictException("Supplier " + supplierId + " is already linked to product " + productId);
+        }
+        product.addSupplier(supplier);
+        products.flush();
+        return suppliersOf(productId);
+    }
+
+    /** Deletes only that one row from product_suppliers; the supplier itself stays. */
+    @Transactional
+    public void removeSupplier(int productId, int supplierId) {
+        Product product = findProduct(productId);
+        Supplier supplier = product.getSuppliers().stream()
+                .filter(s -> s.getId() == supplierId)
+                .findFirst()
+                .orElseThrow(() -> new NotFoundException(
+                        "Supplier " + supplierId + " is not linked to product " + productId));
+        product.removeSupplier(supplier);
+    }
+
+    private Product findProduct(int id) {
+        return products.findById(id)
+                .orElseThrow(() -> new NotFoundException("Product " + id + " not found"));
+    }
+
+    private static boolean isPrimary(Product product, Supplier supplier) {
+        return product.getSupplier() != null && product.getSupplier().getId().equals(supplier.getId());
     }
 
     private ProductCategory category(Integer id) {

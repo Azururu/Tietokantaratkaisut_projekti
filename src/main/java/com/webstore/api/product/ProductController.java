@@ -2,6 +2,7 @@ package com.webstore.api.product;
 
 import java.math.BigDecimal;
 import java.net.URI;
+import java.util.List;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -15,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.webstore.api.common.PageResponse;
+import com.webstore.api.supplier.SupplierResponse;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
@@ -64,6 +66,25 @@ public class ProductController {
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable int id) {
         products.delete(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    // N:M suppliers of a product (join table product_suppliers)
+
+    @GetMapping("/{id}/suppliers")
+    public List<SupplierResponse> suppliers(@PathVariable int id) {
+        return products.suppliersOf(id);
+    }
+
+    @PostMapping("/{id}/suppliers/{supplierId}")
+    public ResponseEntity<List<SupplierResponse>> addSupplier(@PathVariable int id, @PathVariable int supplierId) {
+        return ResponseEntity.created(URI.create("/api/products/" + id + "/suppliers"))
+                .body(products.addSupplier(id, supplierId));
+    }
+
+    @DeleteMapping("/{id}/suppliers/{supplierId}")
+    public ResponseEntity<Void> removeSupplier(@PathVariable int id, @PathVariable int supplierId) {
+        products.removeSupplier(id, supplierId);
         return ResponseEntity.noContent().build();
     }
 }
