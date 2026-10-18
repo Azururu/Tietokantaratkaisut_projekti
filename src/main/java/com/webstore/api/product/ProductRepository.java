@@ -1,13 +1,15 @@
 package com.webstore.api.product;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 /** Writable access to the products table. Reads for the API go through {@link CatalogProductRepository}. */
-public interface ProductRepository extends JpaRepository<Product, Integer> {
+public interface ProductRepository extends JpaRepository<Product, Integer>, ProductRepositoryCustom {
 
     boolean existsByCategoryId(Integer categoryId);
 
@@ -23,4 +25,12 @@ public interface ProductRepository extends JpaRepository<Product, Integer> {
      */
     @Query("select p from Product p join p.suppliers s where s.id = :supplierId")
     List<Product> findBySupplierId(@Param("supplierId") Integer supplierId);
+
+    /**
+     * Multiplies the price of every product in the category in one UPDATE statement,
+     * instead of loading and saving the products one by one.
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("update Product p set p.price = p.price * :factor where p.category.id = :categoryId")
+    int updatePriceByCategory(@Param("factor") BigDecimal factor, @Param("categoryId") int categoryId);
 }

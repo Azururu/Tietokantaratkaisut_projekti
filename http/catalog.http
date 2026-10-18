@@ -64,3 +64,12 @@ DELETE {{base}}/categories/{{category.response.body.$.id}}
 
 ### A product that is on orders can't be deleted: 409
 DELETE {{base}}/products/2
+
+
+### Bulk price change (assignment 13, JPQL UPDATE): +10 % to every product in category 3
+POST {{base}}/products/bulk/price?categoryId=3&factor=1.10
+
+
+### Bulk restock (assignment 13, Criteria API): two conditions
+POST {{base}}/products/bulk/restock?amount=50&categoryId=3&stockBelow=50
+

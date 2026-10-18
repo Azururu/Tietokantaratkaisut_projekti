@@ -106,6 +106,35 @@ public class ProductService {
         }
         products.delete(product);
     }
+    // ---------------------------------------------------------------------
+    // Bulk operations (assignment 13)
+    // ---------------------------------------------------------------------
+
+    /**
+     * Changes the price of every product in the category with one JPQL UPDATE.
+     * The class is read-only by default, so this method needs its own @Transactional:
+     * a bulk update must run inside a writable transaction.
+     */
+    @Transactional
+    public int changePricesInCategory(int categoryId, BigDecimal factor) {
+        category(categoryId);   // 400 if the category doesn't exist
+        return products.updatePriceByCategory(factor, categoryId);
+    }
+
+        /**
+     * Adds stock to every product matching the given conditions, with one Criteria API
+     * UPDATE (ProductRepositoryCustomImpl). At least one condition is required:
+     * without any, the update would hit every product in the table.
+     */
+    @Transactional
+    public int restock(int amount, Integer categoryId, Integer supplierId, Integer stockBelow) {
+        if (categoryId == null && supplierId == null && stockBelow == null) {
+            throw new BadRequestException("Give at least one condition: categoryId, supplierId or stockBelow");
+        }
+        return products.addStock(amount, categoryId, supplierId, stockBelow);
+    }
+
+
 
     // ---------------------------------------------------------------------
     // N:M Product <-> Supplier (join table product_suppliers)

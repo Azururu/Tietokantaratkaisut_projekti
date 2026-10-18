@@ -3,6 +3,7 @@ package com.webstore.api.product;
 import java.math.BigDecimal;
 import java.net.URI;
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -19,6 +20,8 @@ import com.webstore.api.common.PageResponse;
 import com.webstore.api.supplier.SupplierResponse;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.DecimalMax;
+import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 
@@ -68,6 +71,26 @@ public class ProductController {
         products.delete(id);
         return ResponseEntity.noContent().build();
     }
+
+    // Bulk operations (assignment 13)
+
+    @PostMapping("/bulk/price")
+    public Map<String, Integer> changePrices(
+            @RequestParam int categoryId,
+            @RequestParam @DecimalMin("0.01") @DecimalMax("10.00") BigDecimal factor) {
+        return Map.of("updated", products.changePricesInCategory(categoryId, factor));
+    }
+
+    @PostMapping("/bulk/restock")
+    public Map<String, Integer> restock(
+            @RequestParam @Min(1) @Max(10000) int amount,
+            @RequestParam(required = false) Integer categoryId,
+            @RequestParam(required = false) Integer supplierId,
+            @RequestParam(required = false) Integer stockBelow) {
+        return Map.of("updated", products.restock(amount, categoryId, supplierId, stockBelow));
+    }
+
+
 
     // N:M suppliers of a product (join table product_suppliers)
 
